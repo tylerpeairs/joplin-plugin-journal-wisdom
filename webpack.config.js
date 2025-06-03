@@ -220,6 +220,14 @@ const pluginConfig = { ...baseConfig, entry: './src/index.ts',
 				},
 			],
 		}),
+		new CopyPlugin({
+			patterns: [
+				{
+					from: path.resolve(rootDir, 'wisdom.md'),
+					to: distDir,
+				},
+			],
+		}),
 	] };
 
 

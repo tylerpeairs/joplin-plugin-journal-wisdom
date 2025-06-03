@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import joplin from 'api';
 import { SettingItemType, ToolbarButtonLocation } from 'api/types';
 
@@ -226,6 +228,30 @@ async function addNoteTags(noteId) {
 	}
 }
 
+/**
+ * Loads the wisdom markdown file from the plugin directory,
+ * splits on two-or-more newlines, and returns a random snippet.
+ */
+async function getRandomWisdomSnippet(): Promise<string> {
+    const pluginDir = await joplin.plugins.installationDir();
+    const filePath = path.join(pluginDir, 'wisdom.md');
+    let content: string;
+    try {
+        content = fs.readFileSync(filePath, 'utf8');
+    } catch (err) {
+        console.error('Journal: failed to read wisdom file:', err);
+        return '';
+    }
+    // Split on two or more line breaks
+    const snippets = content.split(/\n{2,}/g).map(s => s.trim()).filter(s => s.length);
+    if (snippets.length === 0) {
+        console.warn('Journal: no snippets found in wisdom.md');
+        return '';
+    }
+    const idx = Math.floor(Math.random() * snippets.length);
+    return snippets[idx];
+}
+
 async function insertTemplate(noteId) {
 	const templateId = await joplin.settings.value('TemplateId');
 	if (!templateId) {
@@ -239,8 +265,15 @@ async function insertTemplate(noteId) {
 	}
 	try {
 		const templateBody = (await joplin.data.get(["notes", templateId], { fields: ["body"] }))["body"];
-		await joplin.data.put(["notes", noteId], null, { "body": noteBody + templateBody });
-		console.log("Journal: inserted template");
+		// Prevent duplicate insertion of template and snippet
+		if (noteBody.includes(templateBody.trim())) {
+			console.info('Journal: template already present, skipping insertion');
+			return;
+		}
+		const snippet = await getRandomWisdomSnippet();
+		const finalBody = noteBody + templateBody + (snippet ? `\n\n> ${snippet}` : '');
+		await joplin.data.put(["notes", noteId], null, { body: finalBody });
+		console.info("Journal: inserted template and wisdom snippet");
 	}
 	catch (error) {
 		console.error("Journal: failed to insert template:", error);
