@@ -75,7 +75,7 @@ async function makeNoteName(d) {
 	let quarterNames = quarterName.split(',');
 	if (quarterNames.length != 4) {
 		quarterNames = defaultQuarterName.split(',');
-    }
+	}
 
 	console.log(`Jouranl tmpl: ${noteTmpl}, monthStyle:${monthStyle}, dayStyle:${dayStyle}, weekdayStyle:${weekdayStyle}`);
 	let data = {
@@ -166,7 +166,7 @@ async function createFolder(folderName, parent) {
 
 	console.log(`Journal Create folder: ${folderName} with parent:`, parent);
 	for (found of founds.items) {
-		if (found.parent_id == (parent ? parent.id : found.parent_id)) {
+		if (found.parent_id == (parent ? parent.id : found.parent_id) && found.deleted_time == 0) {
 			return found;
 		}
 	}
@@ -188,8 +188,9 @@ async function createNote(notePath) {
 
 	let notes = await joplin.data.get(["search"], { query: `/"${noteName}"`, type: "note" });
 	let note
+
 	for (note of notes.items) {
-		if (note.parent_id == parent.id && note.title == noteName) {
+		if (note.parent_id == parent.id && note.title == noteName && note.deleted_time == 0) {
 			console.log(`Journal found note: ${note.title} with id ${note.id}`);
 			return note;
 		}
@@ -291,6 +292,27 @@ async function createNoteByDate(d) {
 	return note;
 }
 
+async function createNoteByDateWithTemplateAndOpen(d) {
+	const note = await createNoteByDate(d);
+	await insertTemplate(note.id);
+	await joplin.commands.execute("openNote", note.id);
+	const isMobilePlatform = await isMobile();
+	if (!isMobilePlatform) {
+		await joplin.commands.execute('editor.focus');
+	}
+
+	return note;
+}
+
+async function linkNote(d, withLable= false) {
+	const note = await createNoteByDate(d);
+	const insertTemplateEveryTime = await joplin.settings.value('insertTemplateEveryTime');
+	if (!insertTemplateEveryTime) {
+		await insertTemplate(note.id);
+	}
+	await joplin.commands.execute("insertText", `[${withLable ? "Today" : note.title}](:/${note.id})`);
+	return note;
+}
 
 joplin.plugins.register({
 	onStart: async function () {
@@ -584,12 +606,7 @@ joplin.plugins.register({
 			label: "Open Today's Note",
 			execute: async () => {
 				const d = new Date();
-				const note = await createNoteByDate(d);
-				await insertTemplate(note.id);
-				await joplin.commands.execute("openNote", note.id);
-				if (!isMobilePlatform) {
-					await joplin.commands.execute('editor.focus');
-				}
+				await createNoteByDateWithTemplateAndOpen(d);
 			}
 		});
 
@@ -598,12 +615,7 @@ joplin.plugins.register({
 			label: "Open Today's Note (with Offset)",
 			execute: async () => {
 				const d = await getDateWithOffset();
-				const note = await createNoteByDate(d);
-				await insertTemplate(note.id);
-				await joplin.commands.execute("openNote", note.id);
-				if (!isMobilePlatform) {
-					await joplin.commands.execute('editor.focus');
-				}
+				await createNoteByDateWithTemplateAndOpen(d);
 			}
 		});
 
@@ -613,24 +625,17 @@ joplin.plugins.register({
 			execute: async () => {
 				let d = await getDateByDialog();
 				if (d !== null) {
-					const note = await createNoteByDate(d);
-					await insertTemplate(note.id);
-					await joplin.commands.execute("openNote", note.id);
-					if (!isMobilePlatform) {
-						await joplin.commands.execute('editor.focus');
-					}
+					await createNoteByDateWithTemplateAndOpen(d);
 				}
 			}
 		});
-
 		await joplin.commands.register({
 			name: "linkTodayNote",
 			label: "Insert link to Today's Note",
 			iconName: "fas fa-calendar-times",
 			execute: async () => {
 				const d = new Date();
-				const note = await createNoteByDate(d);
-				await joplin.commands.execute("insertText", `[${note.title}](:/${note.id})`);
+				await linkNote(d);
 			}
 		});
 
@@ -640,8 +645,7 @@ joplin.plugins.register({
 			iconName: "fas fa-calendar-times",
 			execute: async () => {
 				const d = await getDateWithOffset();
-				const note = await createNoteByDate(d);
-				await joplin.commands.execute("insertText", `[${note.title}](:/${note.id})`);
+				await linkNote(d);
 			}
 		});
 
@@ -652,8 +656,7 @@ joplin.plugins.register({
 			execute: async () => {
 				let d = await getDateByDialog();
 				if (d !== null) {
-					const note = await createNoteByDate(d);
-					await joplin.commands.execute("insertText", `[${note.title}](:/${note.id})`);
+					await linkNote(d);
 				}
 			}
 		});
@@ -664,9 +667,7 @@ joplin.plugins.register({
 			iconName: "fas fa-calendar-minus",
 			execute: async () => {
 				const d = new Date();
-				const note = await createNoteByDate(d);
-				await joplin.commands.execute("insertText", `[Today](:/${note.id})`);
-			}
+				await linkNote(d, true);			}
 		});
 
 		await joplin.commands.register({
@@ -675,21 +676,21 @@ joplin.plugins.register({
 			iconName: "fas fa-calendar-minus",
 			execute: async () => {
 				const d = await getDateWithOffset();
-				const note = await createNoteByDate(d);
-				await joplin.commands.execute("insertText", `[Today](:/${note.id})`);
+				await linkNote(d, true);
 			}
 		});
 
-
 		await joplin.views.menus.create('journal-menu', 'Journal', [
 			{ label: "Open Today's Note", commandName: "openTodayNote", accelerator: "CmdOrCtrl+Alt+D" },
-			{ label: "Open Today's Note (with Offset)", commandName: "openOffsetTodayNote", accelerator: "CmdOrCtrl+Shift+Alt+D" },
 			{ label: "Open Another day's Note", commandName: "openOtherdayNote", accelerator: "CmdOrCtrl+Alt+O" },
 			{ label: "Insert link to Today's Note", commandName: "linkTodayNote", accelerator: "CmdOrCtrl+Alt+L" },
-			{ label: "Insert link to Today's Note (with Offset)", commandName: "linkOffsetTodayNote", accelerator: "CmdOrCtrl+Shift+Alt+L" },
-			{ label: "Insert link to Today's Note with Label", commandName: "linkTodayNoteWithLabel", accelerator: "CmdOrCtrl+Alt+I" },
-			{ label: "Insert link to Today's Note with Label (with Offset)", commandName: "linkOffsetTodayNoteWithLabel", accelerator: "CmdOrCtrl+Shift+Alt+I" },
 			{ label: "Insert link to Another day's Note", commandName: "linkOtherDayNote", accelerator: "CmdOrCtrl+Alt+T" },
+
+			{ label: "Insert link to Today's Note with Label", commandName: "linkTodayNoteWithLabel", accelerator: "CmdOrCtrl+Alt+I" },
+
+			{ label: "Open Today's Note (with Offset)", commandName: "openOffsetTodayNote", accelerator: "CmdOrCtrl+Shift+Alt+D" },
+			{ label: "Insert link to Today's Note (with Offset)", commandName: "linkOffsetTodayNote", accelerator: "CmdOrCtrl+Shift+Alt+L" },
+			{ label: "Insert link to Today's Note with Label (with Offset)", commandName: "linkOffsetTodayNoteWithLabel", accelerator: "CmdOrCtrl+Shift+Alt+I" },
 		]);
 
 		const shouldOpen = await joplin.settings.value('OpenAtStartup') || false;
